@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STEGO//CRYPT — Digital Darkroom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #0f0f1a;
+    --bg3: #12121f;
+    --cyan: #00f5ff;
+    --cyan-dim: #00a8b0;
+    --magenta: #ff0080;
+    --magenta-dim: #990044;
+    --green: #00ff88;
+    --text: #c8d8e0;
+    --text-dim: #5a7080;
+    --border: #1a2a35;
+    --border-bright: #00f5ff33;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Pixel noise canvas background */
+  #bgCanvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.03;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 30px 20px 60px;
+  }
+
+  /* ===== HEADER ===== */
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+    position: relative;
+  }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta), var(--cyan));
+    background-size: 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradShift 4s linear infinite;
+    text-shadow: none;
+  }
+
+  @keyframes gradShift {
+    0% { background-position: 0% }
+    100% { background-position: 200% }
+  }
+
+  .tagline {
+    color: var(--text-dim);
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+
+  .header-divider {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), transparent);
+    margin-top: 20px;
+    animation: divGlow 3s ease-in-out infinite alternate;
+  }
+  @keyframes divGlow {
+    from { opacity: 0.4; }
+    to { opacity: 1; }
+  }
+
+  /* ===== ALGORITHM SELECTOR ===== */
+  .algo-panel {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px;
+    position: relative;
+  }
+
+  .algo-panel::before {
+    content: 'ALGORITHM';
+    position: absolute;
+    top: -9px; left: 12px;
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--cyan);
+    background: var(--bg2);
+    padding: 0 6px;
+  }
+
+  .algo-btn {
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 10px 6px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.25s;
+    text-transform: uppercase;
+  }
+
+  .algo-btn:hover {
+    color: var(--cyan);
+    border-color: var(--border-bright);
+    background: rgba(0,245,255,0.04);
+  }
+
+  .algo-btn.active {
+    background: rgba(0,245,255,0.1);
+    border-color: var(--cyan);
+    color: var(--cyan);
+    box-shadow: 0 0 12px rgba(0,245,255,0.2), inset 0 0 12px rgba(0,245,255,0.04);
+  }
+
+  /* ===== MODE TOGGLE ===== */
+  .mode-toggle {
+    display: flex;
+    gap: 0;
+    margin-bottom: 28px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    width: fit-content;
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 10px 28px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.15em;
+  }
+  .mode-btn:last-child { border-right: none; }
+
+  .mode-btn.active {
+    background: var(--magenta);
+    color: #fff;
+    font-weight: bold;
+    box-shadow: 0 0 20px rgba(255,0,128,0.35);
+  }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 700px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ===== PANEL ===== */
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    position: relative;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+
+  .panel-label {
+    position: absolute;
+    top: -9px; left: 14px;
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--cyan);
+    background: var(--bg2);
+    padding: 0 6px;
+    text-transform: uppercase;
+  }
+
+  /* ===== UPLOAD ZONE ===== */
+  .upload-zone {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 30px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--cyan);
+    background: rgba(0,245,255,0.03);
+    box-shadow: inset 0 0 20px rgba(0,245,255,0.05);
+  }
+  .upload-zone input { display: none; }
+  .upload-icon {
+    font-size: 32px;
+    margin-bottom: 10px;
+    opacity: 0.4;
+  }
+  .upload-text {
+    color: var(--text-dim);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+  }
+  .upload-text strong {
+    color: var(--cyan);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* ===== CANVAS PREVIEW ===== */
+  .preview-wrap {
+    position: relative;
+    margin-top: 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preview-wrap canvas, .preview-wrap img {
+    max-width: 100%;
+    max-height: 240px;
+    display: block;
+  }
+  .preview-empty {
+    color: var(--text-dim);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    opacity: 0.5;
+  }
+
+  /* ===== CAPACITY BAR ===== */
+  .capacity-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .capacity-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+  .capacity-bar-wrap {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .capacity-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta));
+    width: 0%;
+    transition: width 0.4s, background 0.4s;
+    border-radius: 2px;
+  }
+  .capacity-bar.warn { background: var(--magenta); }
+  .capacity-val {
+    font-size: 10px;
+    color: var(--cyan);
+    white-space: nowrap;
+    min-width: 60px;
+    text-align: right;
+  }
+
+  /* ===== TEXT INPUT ===== */
+  .msg-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 12px;
+    resize: vertical;
+    min-height: 100px;
+    transition: border-color 0.2s;
+    line-height: 1.5;
+  }
+  .msg-input:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 1px rgba(0,245,255,0.15);
+  }
+  .char-count {
+    text-align: right;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+  }
+  .char-count.warn { color: var(--magenta); }
+
+  /* ===== BUTTON ===== */
+  .btn-primary {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--cyan);
+    border-radius: 4px;
+    color: var(--cyan);
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    padding: 13px;
+    cursor: pointer;
+    margin-top: 14px;
+    transition: all 0.25s;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--cyan);
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .btn-primary:hover::before { opacity: 0.08; }
+  .btn-primary:hover {
+    box-shadow: 0 0 20px rgba(0,245,255,0.25);
+  }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .btn-primary span { position: relative; z-index: 1; }
+
+  .btn-magenta {
+    border-color: var(--magenta);
+    color: var(--magenta);
+  }
+  .btn-magenta::before { background: var(--magenta); }
+  .btn-magenta:hover { box-shadow: 0 0 20px rgba(255,0,128,0.25); }
+
+  /* ===== TERMINAL LOG ===== */
+  .terminal {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    font-size: 11px;
+    color: var(--green);
+    line-height: 1.7;
+    min-height: 80px;
+    max-height: 160px;
+    overflow-y: auto;
+    margin-top: 14px;
+    position: relative;
+  }
+  .terminal::before {
+    content: 'SYS LOG';
+    position: absolute;
+    top: -8px; left: 10px;
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--green);
+    background: var(--bg);
+    padding: 0 5px;
+  }
+  .term-line { display: block; }
+  .term-line.err { color: var(--magenta); }
+  .term-line.info { color: var(--cyan); }
+  .term-line.warn { color: #ffcc00; }
+  .cursor {
+    display: inline-block;
+    width: 8px; height: 12px;
+    background: var(--green);
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* ===== RESULT PANEL ===== */
+  .result-panel {
+    grid-column: 1 / -1;
+    position: relative;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.4s, transform 0.4s;
+    pointer-events: none;
+  }
+  .result-panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+  }
+
+  /* CLASSIFIED watermark */
+  .classified-stamp {
+    position: absolute;
+    top: 50%;
+    right: 24px;
+    transform: translateY(-50%) rotate(-15deg);
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.25em;
+    color: rgba(255,0,128,0.12);
+    border: 2px solid rgba(255,0,128,0.12);
+    padding: 6px 12px;
+    border-radius: 3px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .extracted-msg {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    color: var(--green);
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 60px;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+
+  /* ===== PROGRESS ===== */
+  .progress-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,15,0.85);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .progress-overlay.show { display: flex; }
+  .progress-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.2em;
+    animation: pulse 1s ease-in-out infinite alternate;
+  }
+  @keyframes pulse { from{opacity:0.6} to{opacity:1} }
+  .progress-bar-wrap {
+    width: 280px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta));
+    border-radius: 2px;
+    transition: width 0.1s;
+  }
+  .progress-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+  }
+
+  /* ===== MISC ===== */
+  .section-gap { margin-top: 14px; }
+  .warn-badge {
+    display: inline-block;
+    background: rgba(255,0,128,0.1);
+    border: 1px solid rgba(255,0,128,0.3);
+    color: var(--magenta);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    padding: 2px 7px;
+    border-radius: 2px;
+    margin-top: 6px;
+  }
+  .preview-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .preview-half {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preview-half-label {
+    position: absolute;
+    top: 4px; left: 6px;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    background: rgba(0,0,0,0.7);
+    padding: 2px 6px;
+    border-radius: 2px;
+    z-index: 2;
+  }
+  .preview-half canvas {
+    max-width: 100%;
+    max-height: 200px;
+    display: block;
+  }
+
+  .algo-desc {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.05em;
+    padding: 8px;
+    border-left: 2px solid var(--border-bright);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-title" id="progressTitle">PROCESSING</div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+  </div>
+  <div class="progress-sub" id="progressSub">Encoding bits...</div>
+</div>
+
+<div class="app">
+  <header>
+    <div class="logo">STEGO // CRYPT</div>
+    <div class="tagline">Digital Darkroom · Steganographic Covert Channel</div>
+    <div class="header-divider"></div>
+  </header>
+
+  <!-- Algorithm selector -->
+  <div class="algo-panel">
+    <button class="algo-btn active" data-algo="lsb">LSB</button>
+    <button class="algo-btn" data-algo="pvd">PVD</button>
+    <button class="algo-btn" data-algo="wow">WOW</button>
+  </div>
+  <div class="algo-desc" id="algoDesc">
+    <b>LSB</b> — Least Significant Bit. Replaces the last bit of each color channel with message bits. Simple, high capacity, statistically detectable under analysis.
+  </div>
+
+  <!-- Mode toggle -->
+  <div class="mode-toggle" style="margin-top:18px">
+    <button class="mode-btn active" data-mode="embed">▶ EMBED</button>
+    <button class="mode-btn" data-mode="extract">◀ EXTRACT</button>
+  </div>
+
+  <div class="main-grid">
+    <!-- LEFT: image upload + preview -->
+    <div class="panel" id="uploadPanel">
+      <span class="panel-label">INPUT IMAGE</span>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept="image/bmp,image/png,image/jpeg,image/jpg">
+        <div class="upload-icon">⬡</div>
+        <div class="upload-text">
+          <strong>DROP IMAGE / CLICK TO BROWSE</strong>
+          BMP (preferred) · PNG · JPEG
+        </div>
+      </div>
+      <div id="jpegWarn" class="warn-badge" style="display:none">⚠ JPEG detected — lossy compression will corrupt LSB/PVD data</div>
+      <div class="capacity-row" id="capacityRow" style="display:none">
+        <span class="capacity-label">CAPACITY</span>
+        <div class="capacity-bar-wrap"><div class="capacity-bar" id="capacityBar"></div></div>
+        <span class="capacity-val" id="capacityVal">—</span>
+      </div>
+      <!-- Single preview (extract mode / embed before) -->
+      <div class="preview-wrap" id="previewSingle">
+        <span class="preview-empty">No image loaded</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: controls -->
+    <div class="panel">
+      <span class="panel-label" id="controlLabel">MESSAGE</span>
+
+      <!-- EMBED controls -->
+      <div id="embedControls">
+        <textarea class="msg-input" id="msgInput" placeholder="Type your secret message here..." maxlength="500000"></textarea>
+        <div class="char-count" id="charCount">0 chars</div>
+        <button class="btn-primary" id="embedBtn" disabled>
+          <span>⬡ EMBED MESSAGE</span>
+        </button>
+      </div>
+
+      <!-- EXTRACT controls -->
+      <div id="extractControls" style="display:none">
+        <button class="btn-primary btn-magenta" id="extractBtn" disabled>
+          <span>◉ EXTRACT MESSAGE</span>
+        </button>
+        <div class="section-gap"></div>
+        <div id="extractedOut" class="extracted-msg" style="display:none"></div>
+        <button class="btn-primary" id="copyBtn" style="display:none;margin-top:8px">
+          <span>⎘ COPY TO CLIPBOARD</span>
+        </button>
+      </div>
+
+      <!-- Terminal log -->
+      <div class="terminal" id="terminal">
+        <span class="term-line info">STEGO//CRYPT v2.0 — SYSTEM READY</span><br>
+        <span class="term-line">Awaiting image input...</span><br>
+        <span class="cursor"></span>
+      </div>
+    </div>
+
+    <!-- RESULT panel (embed output) -->
+    <div class="panel result-panel" id="resultPanel">
+      <span class="panel-label">OUTPUT</span>
+      <div class="classified-stamp">CLASSIFIED</div>
+      <div class="preview-pair">
+        <div class="preview-half">
+          <span class="preview-half-label">ORIGINAL</span>
+          <canvas id="origCanvas"></canvas>
+        </div>
+        <div class="preview-half">
+          <span class="preview-half-label">STEGO</span>
+          <canvas id="stegoCanvas"></canvas>
+        </div>
+      </div>
+      <button class="btn-primary" id="downloadBtn" style="margin-top:14px">
+        <span>⬇ DOWNLOAD STEGO IMAGE (PNG)</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// BACKGROUND ANIMATION — pixel grid shifting at low opacity
+// =====================================================================
+(function() {
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let W, H;
+  const CELL = 16;
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const COLORS = ['#00f5ff','#ff0080','#00ff88','#ffffff'];
+  let t = 0;
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const cols = Math.ceil(W / CELL);
+    const rows = Math.ceil(H / CELL);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const noise = Math.sin(c * 0.7 + t * 0.4) * Math.cos(r * 0.5 + t * 0.3);
+        if (Math.random() > 0.992) {
+          ctx.fillStyle = COLORS[Math.floor(Math.random()*COLORS.length)];
+          ctx.fillRect(c * CELL, r * CELL, CELL - 1, CELL - 1);
+        } else if (noise > 0.9) {
+          ctx.fillStyle = 'rgba(0,245,255,0.5)';
+          ctx.fillRect(c * CELL, r * CELL, 2, 2);
+        }
+      }
+    }
+    t += 0.015;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// =====================================================================
+// TERMINAL LOG
+// =====================================================================
+const terminal = document.getElementById('terminal');
+function termLog(msg, type='') {
+  const span = document.createElement('span');
+  span.className = 'term-line' + (type ? ' '+type : '');
+  span.textContent = '> ' + msg;
+  const cursor = terminal.querySelector('.cursor');
+  terminal.insertBefore(span, cursor);
+  terminal.insertBefore(document.createElement('br'), cursor);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+// =====================================================================
+// PROGRESS OVERLAY
+// =====================================================================
+const progressOverlay = document.getElementById('progressOverlay');
+const progressTitle = document.getElementById('progressTitle');
+const progressFill = document.getElementById('progressFill');
+const progressSub = document.getElementById('progressSub');
+
+function showProgress(title, sub) {
+  progressTitle.textContent = title;
+  progressSub.textContent = sub;
+  progressFill.style.width = '0%';
+  progressOverlay.classList.add('show');
+}
+function setProgress(pct, sub) {
+  progressFill.style.width = pct + '%';
+  if (sub) progressSub.textContent = sub;
+}
+function hideProgress() {
+  progressFill.style.width = '100%';
+  setTimeout(() => progressOverlay.classList.remove('show'), 300);
+}
+
+// =====================================================================
+// STATE
+// =====================================================================
+let currentAlgo = 'lsb';
+let currentMode = 'embed';
+let loadedImageData = null; // ImageData of original
+let loadedCanvas = null;    // OffscreenCanvas or regular canvas
+let imageCapacity = {};     // {lsb, pvd, wow} in characters
+let isJpeg = false;
+
+// =====================================================================
+// BINARY MESSAGE HELPERS
+// =====================================================================
+
+/**
+ * Encode a JS string to binary string (UTF-8 code points, basic BMP only)
+ * Prepends a 32-bit length header (number of data bits after header).
+ */
+function encodeMessage(str) {
+  // Convert each char to 8-bit binary (for ASCII/Latin; multi-byte chars get truncated to BMP)
+  let bits = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) & 0xFF; // treat as latin-1 / ASCII
+    bits += code.toString(2).padStart(8, '0');
+  }
+  // 32-bit length header = number of bits in message
+  const lenBits = bits.length.toString(2).padStart(32, '0');
+  return lenBits + bits;
+}
+
+/**
+ * Decode binary string back to JS string (after reading 32-bit header separately)
+ */
+function decodeBits(bits) {
+  let result = '';
+  for (let i = 0; i + 7 < bits.length; i += 8) {
+    result += String.fromCharCode(parseInt(bits.slice(i, i+8), 2));
+  }
+  return result;
+}
+
+/**
+ * Read 32-bit integer from bit string starting at offset
+ */
+function readInt32(bits, offset) {
+  return parseInt(bits.slice(offset, offset+32), 2);
+}
+
+// =====================================================================
+// BMP PARSER
+// =====================================================================
+/**
+ * Parse a BMP ArrayBuffer and return ImageData.
+ * Supports 24-bit uncompressed BMP (DIB header BMP).
+ */
+function parseBMP(buffer) {
+  const view = new DataView(buffer);
+  // BMP signature
+  if (view.getUint8(0) !== 0x42 || view.getUint8(1) !== 0x4D) {
+    throw new Error('Not a valid BMP file');
+  }
+  const pixelOffset = view.getUint32(10, true);
+  const dibSize = view.getUint32(14, true);
+  const width = view.getInt32(18, true);
+  let height = view.getInt32(22, true);
+  const bitsPerPixel = view.getUint16(28, true);
+  const compression = view.getUint32(30, true);
+
+  if (bitsPerPixel !== 24) throw new Error('Only 24-bit BMP supported');
+  if (compression !== 0) throw new Error('Compressed BMP not supported');
+
+  const topDown = height < 0;
+  const absHeight = Math.abs(height);
+  // Row stride must be padded to 4-byte boundary
+  const rowBytes = width * 3;
+  const stride = Math.ceil(rowBytes / 4) * 4;
+
+  const imageData = new ImageData(width, absHeight);
+  const data = imageData.data;
+
+  for (let row = 0; row < absHeight; row++) {
+    const srcRow = topDown ? row : (absHeight - 1 - row);
+    const rowOffset = pixelOffset + srcRow * stride;
+    for (let col = 0; col < width; col++) {
+      const srcIdx = rowOffset + col * 3;
+      const dstIdx = (row * width + col) * 4;
+      data[dstIdx]   = view.getUint8(srcIdx + 2); // R (BMP stores BGR)
+      data[dstIdx+1] = view.getUint8(srcIdx + 1); // G
+      data[dstIdx+2] = view.getUint8(srcIdx);     // B
+      data[dstIdx+3] = 255;
+    }
+  }
+  return imageData;
+}
+
+// =====================================================================
+// CAPACITY CALCULATION
+// =====================================================================
+function calcCapacity(imgData) {
+  const n = (imgData.width * imgData.height);
+  const pixels = n;
+  // LSB: 3 bits per pixel (R,G,B), minus 32-bit header
+  const lsbBits = pixels * 3 - 32;
+  // PVD: pairs of pixels in rows, variable bits per pair
+  // Rough estimate: ~4 bits per pair on average
+  const pairs = Math.floor(imgData.width / 2) * imgData.height * 3; // 3 channel pairs
+  const pvdBits = pairs * 4 - 32; // conservative average
+  // WOW: 1 bit per pixel (green channel LSB), minus header
+  const wowBits = pixels - 32;
+  return {
+    lsb: Math.max(0, Math.floor(lsbBits / 8)),
+    pvd: Math.max(0, Math.floor(pvdBits / 8)),
+    wow: Math.max(0, Math.floor(wowBits / 8))
+  };
+}
+
+// =====================================================================
+// LSB ALGORITHM
+// =====================================================================
+
+/**
+ * LSB Embed: hide message in image pixels.
+ * Returns new ImageData with message embedded.
+ */
+function lsbEmbed(imgData, message) {
+  const data = new Uint8ClampedArray(imgData.data);
+  const allBits = encodeMessage(message);
+  const totalBits = allBits.length;
+  const totalChannels = imgData.width * imgData.height * 3;
+
+  if (totalBits > totalChannels) {
+    throw new Error(`Message too long: needs ${totalBits} bits, image has ${totalChannels} channel slots`);
+  }
+
+  let bitIdx = 0;
+  let pixIdx = 0; // pixel index in data array
+
+  // Iterate R,G,B channels per pixel in raster order
+  outer: for (let i = 0; i < imgData.data.length; i += 4) {
+    for (let ch = 0; ch < 3; ch++) {
+      if (bitIdx >= totalBits) break outer;
+      const bit = parseInt(allBits[bitIdx++]);
+      // Replace LSB of this channel
+      data[i + ch] = (data[i + ch] & 0xFE) | bit;
+    }
+  }
+
+  return new ImageData(data, imgData.width, imgData.height);
+}
+
+/**
+ * LSB Extract: read message from image pixels.
+ */
+function lsbExtract(imgData) {
+  const data = imgData.data;
+  let bits = '';
+
+  // First read 32-bit header
+  let bitCount = 0;
+  for (let i = 0; i < data.length && bitCount < 32; i += 4) {
+    for (let ch = 0; ch < 3 && bitCount < 32; ch++) {
+      bits += (data[i + ch] & 1).toString();
+      bitCount++;
+    }
+  }
+
+  const msgBitLen = readInt32(bits, 0);
+  if (msgBitLen < 0 || msgBitLen > data.length * 3) {
+    throw new Error('Invalid message length — wrong algorithm or no message embedded');
+  }
+
+  // Now read msgBitLen bits for the actual message
+  let msgBits = '';
+  let totalRead = 0;
+  let startCh = 32; // we've already consumed 32 bit-slots
+
+  // We need to restart from bit slot 32 in the pixel stream
+  let slot = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    for (let ch = 0; ch < 3; ch++) {
+      if (slot >= 32 && totalRead < msgBitLen) {
+        msgBits += (data[i + ch] & 1).toString();
+        totalRead++;
+        if (totalRead >= msgBitLen) break;
+      }
+      slot++;
+    }
+    if (totalRead >= msgBitLen) break;
+  }
+
+  return decodeBits(msgBits);
+}
+
+// =====================================================================
+// PVD ALGORITHM (Pixel Value Differencing)
+// =====================================================================
+
+// PVD range table: [lower, upper, bits]
+const PVD_RANGES = [
+  [0, 7, 3],
+  [8, 15, 3],
+  [16, 31, 4],
+  [32, 63, 5],
+  [64, 127, 6],
+  [128, 255, 7]
+];
+
+function pvdGetRange(d) {
+  d = Math.abs(d);
+  for (const [lo, hi, bits] of PVD_RANGES) {
+    if (d >= lo && d <= hi) return { lo, hi, bits };
+  }
+  return { lo: 128, hi: 255, bits: 7 };
+}
+
+function pvdEmbedChannel(p1, p2, bits) {
+  // bits is a string of 0s and 1s to embed
+  const d = p2 - p1;
+  const absd = Math.abs(d);
+  const range = pvdGetRange(absd);
+  const n = range.bits;
+  const embedBits = bits.slice(0, n).padStart(n, '0');
+  const newD = parseInt(embedBits, 2);
+  const diff = newD - absd;
+  let newP1 = p1;
+  let newP2 = p2;
+  if (d >= 0) {
+    // Distribute diff
+    newP1 = Math.round(p1 - diff / 2);
+    newP2 = Math.round(p2 + Math.ceil(diff / 2));
+  } else {
+    newP1 = Math.round(p1 + Math.ceil(diff / 2));
+    newP2 = Math.round(p2 - diff / 2);
+  }
+  newP1 = Math.min(255, Math.max(0, newP1));
+  newP2 = Math.min(255, Math.max(0, newP2));
+  return { newP1, newP2, bitsUsed: n };
+}
+
+function pvdExtractChannel(p1, p2) {
+  const d = Math.abs(p2 - p1);
+  const range = pvdGetRange(d);
+  const n = range.bits;
+  const bits = d.toString(2).padStart(n, '0');
+  return { bits, n };
+}
+
+function pvdEmbed(imgData, message) {
+  const data = new Uint8ClampedArray(imgData.data);
+  const allBits = encodeMessage(message);
+  let bitIdx = 0;
+  const W = imgData.width;
+  const H = imgData.height;
+
+  for (let row = 0; row < H && bitIdx < allBits.length; row++) {
+    for (let col = 0; col < W - 1 && bitIdx < allBits.length; col += 2) {
+      const i1 = (row * W + col) * 4;
+      const i2 = (row * W + col + 1) * 4;
+      // Process R, G, B channels separately
+      for (let ch = 0; ch < 3 && bitIdx < allBits.length; ch++) {
+        const remaining = allBits.length - bitIdx;
+        const range = pvdGetRange(Math.abs(data[i2+ch] - data[i1+ch]));
+        const take = Math.min(range.bits, remaining);
+        const embedSlice = allBits.slice(bitIdx, bitIdx + take).padStart(range.bits, '0');
+        const { newP1, newP2, bitsUsed } = pvdEmbedChannel(data[i1+ch], data[i2+ch], embedSlice);
+        data[i1+ch] = newP1;
+        data[i2+ch] = newP2;
+        bitIdx += bitsUsed;
+      }
+    }
+  }
+
+  if (bitIdx < allBits.length) {
+    throw new Error('Message too long for PVD embedding in this image');
+  }
+
+  return new ImageData(data, W, H);
+}
+
+function pvdExtract(imgData) {
+  const data = imgData.data;
+  const W = imgData.width;
+  const H = imgData.height;
+  let bits = '';
+
+  // Read bits from pixel pairs
+  for (let row = 0; row < H; row++) {
+    for (let col = 0; col < W - 1; col += 2) {
+      const i1 = (row * W + col) * 4;
+      const i2 = (row * W + col + 1) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const { bits: b } = pvdExtractChannel(data[i1+ch], data[i2+ch]);
+        bits += b;
+        // Check header once we have 32 bits
+        if (bits.length >= 32) {
+          // Check if we have enough bits for message
+          const msgBitLen = readInt32(bits, 0);
+          if (bits.length >= 32 + msgBitLen) {
+            const msgBits = bits.slice(32, 32 + msgBitLen);
+            return decodeBits(msgBits);
+          }
+        }
+      }
+    }
+  }
+
+  if (bits.length < 32) throw new Error('Could not extract message header');
+  const msgBitLen = readInt32(bits, 0);
+  if (32 + msgBitLen > bits.length) throw new Error('Message data truncated or not embedded with PVD');
+  return decodeBits(bits.slice(32, 32 + msgBitLen));
+}
+
+// =====================================================================
+// WOW ALGORITHM (simplified — texture-priority embedding)
+// =====================================================================
+
+/**
+ * Compute per-pixel texture complexity using 3×3 neighborhood variance.
+ * Returns array of {idx, score} sorted by score descending.
+ */
+function computePixelOrder(imgData) {
+  const data = imgData.data;
+  const W = imgData.width;
+  const H = imgData.height;
+  const scores = new Float32Array(W * H);
+
+  for (let row = 1; row < H - 1; row++) {
+    for (let col = 1; col < W - 1; col++) {
+      // Gather 3×3 green-channel neighborhood
+      let sum = 0, sum2 = 0, count = 0;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const g = data[((row+dr)*W + (col+dc))*4 + 1]; // green channel
+          sum += g;
+          sum2 += g * g;
+          count++;
+        }
+      }
+      const mean = sum / count;
+      const variance = sum2 / count - mean * mean;
+      scores[row * W + col] = variance;
+    }
+  }
+
+  // Build sorted index array
+  const indices = [];
+  for (let i = 0; i < W * H; i++) {
+    if (scores[i] > 0) indices.push(i);
+  }
+  // Sort descending by variance (most textured first)
+  indices.sort((a, b) => scores[b] - scores[a]);
+  // Append remaining pixels (borders, zero-variance) at end
+  for (let i = 0; i < W * H; i++) {
+    if (scores[i] === 0) indices.push(i);
+  }
+  return indices;
+}
+
+function wowEmbed(imgData, message) {
+  const data = new Uint8ClampedArray(imgData.data);
+  const allBits = encodeMessage(message);
+  const totalBits = allBits.length;
+
+  const order = computePixelOrder(imgData);
+
+  if (totalBits > order.length) {
+    throw new Error('Message too long for WOW embedding in this image');
+  }
+
+  for (let bi = 0; bi < totalBits; bi++) {
+    const pixelIdx = order[bi];
+    const dataIdx = pixelIdx * 4 + 1; // green channel
+    const bit = parseInt(allBits[bi]);
+    data[dataIdx] = (data[dataIdx] & 0xFE) | bit;
+  }
+
+  return new ImageData(data, imgData.width, imgData.height);
+}
+
+function wowExtract(imgData) {
+  const data = imgData.data;
+  const order = computePixelOrder(imgData);
+
+  // Read 32 bits of header first
+  let bits = '';
+  for (let i = 0; i < 32 && i < order.length; i++) {
+    const pixelIdx = order[i];
+    bits += (data[pixelIdx * 4 + 1] & 1).toString();
+  }
+
+  if (bits.length < 32) throw new Error('Image too small to extract WOW header');
+  const msgBitLen = readInt32(bits, 0);
+  if (msgBitLen < 0 || msgBitLen > order.length - 32) {
+    throw new Error('Invalid WOW header — wrong algorithm or no message embedded');
+  }
+
+  let msgBits = '';
+  for (let i = 32; i < 32 + msgBitLen && i < order.length; i++) {
+    const pixelIdx = order[i];
+    msgBits += (data[pixelIdx * 4 + 1] & 1).toString();
+  }
+
+  return decodeBits(msgBits);
+}
+
+// =====================================================================
+// IMAGE LOADING
+// =====================================================================
+async function loadImageFromFile(file) {
+  const isBmp = file.name.toLowerCase().endsWith('.bmp');
+  isJpeg = file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg');
+
+  document.getElementById('jpegWarn').style.display = isJpeg ? 'inline-block' : 'none';
+
+  if (isBmp) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imgData = parseBMP(e.target.result);
+          resolve(imgData);
+          termLog(`BMP parsed: ${imgData.width}×${imgData.height}px`, 'info');
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  } else {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const cv = document.createElement('canvas');
+        cv.width = img.naturalWidth;
+        cv.height = img.naturalHeight;
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        resolve(imgData);
+        termLog(`${isJpeg?'JPEG':'PNG'} loaded: ${imgData.width}×${imgData.height}px`, isJpeg ? 'warn' : 'info');
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = url;
+    });
+  }
+}
+
+function renderImageDataToCanvas(canvas, imgData) {
+  canvas.width = imgData.width;
+  canvas.height = imgData.height;
+  canvas.getContext('2d').putImageData(imgData, 0, 0);
+}
+
+// =====================================================================
+// UI STATE
+// =====================================================================
+function updateCapacityUI() {
+  if (!loadedImageData) return;
+  imageCapacity = calcCapacity(loadedImageData);
+  const cap = imageCapacity[currentAlgo];
+  document.getElementById('capacityRow').style.display = 'flex';
+  document.getElementById('capacityVal').textContent = cap.toLocaleString() + ' chars';
+
+  const msgLen = document.getElementById('msgInput').value.length;
+  const pct = Math.min(100, (msgLen / cap) * 100);
+  const bar = document.getElementById('capacityBar');
+  bar.style.width = pct + '%';
+  bar.className = 'capacity-bar' + (pct > 90 ? ' warn' : '');
+
+  const charCountEl = document.getElementById('charCount');
+  charCountEl.textContent = `${msgLen} / ${cap.toLocaleString()} chars`;
+  charCountEl.className = 'char-count' + (pct > 90 ? ' warn' : '');
+}
+
+function updateEmbedBtn() {
+  const hasImage = !!loadedImageData;
+  const hasMsg = document.getElementById('msgInput').value.trim().length > 0;
+  document.getElementById('embedBtn').disabled = !(hasImage && hasMsg);
+}
+
+function updateExtractBtn() {
+  document.getElementById('extractBtn').disabled = !loadedImageData;
+}
+
+// =====================================================================
+// ALGO DESCRIPTIONS
+// =====================================================================
+const ALGO_DESCS = {
+  lsb: '<b>LSB</b> — Least Significant Bit. Replaces the last bit of each R,G,B channel with message bits. Simple, highest capacity, statistically detectable under steganalysis.',
+  pvd: '<b>PVD</b> — Pixel Value Differencing. Encodes bits in the difference between adjacent pixel pairs. More natural-looking changes in edge regions. Moderate capacity.',
+  wow: '<b>WOW</b> — Wavelet Obtained Weights (spatial approx). Embeds in highest-texture regions first using per-pixel variance scoring. Changes are visually imperceptible in complex areas.'
+};
+
+// =====================================================================
+// SINGLE PREVIEW UPDATE
+// =====================================================================
+function updateSinglePreview(imgData) {
+  const wrap = document.getElementById('previewSingle');
+  wrap.innerHTML = '';
+  const cv = document.createElement('canvas');
+  renderImageDataToCanvas(cv, imgData);
+  cv.style.maxWidth = '100%';
+  cv.style.maxHeight = '220px';
+  wrap.appendChild(cv);
+}
+
+// =====================================================================
+// ASYNC EMBED/EXTRACT WITH PROGRESS
+// =====================================================================
+async function runEmbed() {
+  if (!loadedImageData) return;
+  const msg = document.getElementById('msgInput').value;
+  if (!msg) return;
+
+  showProgress('EMBEDDING', 'Encoding message bits...');
+  termLog(`Starting ${currentAlgo.toUpperCase()} embed — ${msg.length} chars`, 'info');
+
+  await sleep(50);
+  setProgress(20, 'Processing pixel data...');
+  await sleep(20);
+
+  let stegoData;
+  try {
+    if (currentAlgo === 'lsb') {
+      stegoData = lsbEmbed(loadedImageData, msg);
+    } else if (currentAlgo === 'pvd') {
+      stegoData = pvdEmbed(loadedImageData, msg);
+    } else {
+      setProgress(30, 'Computing texture map...');
+      await sleep(30);
+      stegoData = wowEmbed(loadedImageData, msg);
+    }
+  } catch (err) {
+    hideProgress();
+    termLog('ERROR: ' + err.message, 'err');
+    return;
+  }
+
+  setProgress(80, 'Rendering output...');
+  await sleep(20);
+
+  // Show result
+  const origCv = document.getElementById('origCanvas');
+  const stegoCv = document.getElementById('stegoCanvas');
+  renderImageDataToCanvas(origCv, loadedImageData);
+  renderImageDataToCanvas(stegoCv, stegoData);
+
+  // Store stego data for download
+  window._stegoImageData = stegoData;
+
+  setProgress(100, 'Done.');
+  await sleep(200);
+  hideProgress();
+
+  const resultPanel = document.getElementById('resultPanel');
+  resultPanel.classList.add('visible');
+
+  const bitsUsed = encodeMessage(msg).length;
+  termLog(`Embedded ${msg.length} chars (${bitsUsed} bits) using ${currentAlgo.toUpperCase()}`, 'info');
+  termLog(`Pixels modified: ~${Math.ceil(bitsUsed / (currentAlgo==='lsb'?3:currentAlgo==='pvd'?4:1)).toLocaleString()}`, '');
+  termLog('Output ready for download.', '');
+}
+
+async function runExtract() {
+  if (!loadedImageData) return;
+
+  showProgress('EXTRACTING', 'Reading stego data...');
+  termLog(`Starting ${currentAlgo.toUpperCase()} extract...`, 'info');
+
+  await sleep(50);
+  setProgress(40, 'Decoding bits...');
+  await sleep(30);
+
+  if (currentAlgo === 'wow') {
+    setProgress(50, 'Reconstructing texture order...');
+    await sleep(50);
+  }
+
+  let msg;
+  try {
+    if (currentAlgo === 'lsb') {
+      msg = lsbExtract(loadedImageData);
+    } else if (currentAlgo === 'pvd') {
+      msg = pvdExtract(loadedImageData);
+    } else {
+      msg = wowExtract(loadedImageData);
+    }
+  } catch (err) {
+    hideProgress();
+    termLog('ERROR: ' + err.message, 'err');
+    return;
+  }
+
+  setProgress(100, 'Done.');
+  await sleep(200);
+  hideProgress();
+
+  const outEl = document.getElementById('extractedOut');
+  outEl.textContent = msg;
+  outEl.style.display = 'block';
+  document.getElementById('copyBtn').style.display = 'block';
+  termLog(`Extracted ${msg.length} chars using ${currentAlgo.toUpperCase()}`, 'info');
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// =====================================================================
+// EVENT LISTENERS
+// =====================================================================
+
+// Algorithm buttons
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentAlgo = btn.dataset.algo;
+    document.getElementById('algoDesc').innerHTML = ALGO_DESCS[currentAlgo];
+    updateCapacityUI();
+    termLog(`Algorithm: ${currentAlgo.toUpperCase()}`, 'info');
+  });
+});
+
+// Mode buttons
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.mode;
+
+    const embedCtrl = document.getElementById('embedControls');
+    const extractCtrl = document.getElementById('extractControls');
+    const resultPanel = document.getElementById('resultPanel');
+    const controlLabel = document.getElementById('controlLabel');
+
+    if (currentMode === 'embed') {
+      embedCtrl.style.display = 'block';
+      extractCtrl.style.display = 'none';
+      resultPanel.classList.remove('visible');
+      controlLabel.textContent = 'MESSAGE';
+    } else {
+      embedCtrl.style.display = 'none';
+      extractCtrl.style.display = 'block';
+      resultPanel.classList.remove('visible');
+      controlLabel.textContent = 'EXTRACT';
+      // Reset extract output
+      document.getElementById('extractedOut').style.display = 'none';
+      document.getElementById('copyBtn').style.display = 'none';
+    }
+
+    // Reset image
+    loadedImageData = null;
+    document.getElementById('previewSingle').innerHTML = '<span class="preview-empty">No image loaded</span>';
+    document.getElementById('capacityRow').style.display = 'none';
+    termLog(`Mode: ${currentMode.toUpperCase()}`, '');
+  });
+});
+
+// File upload
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) await processFile(file);
+});
+fileInput.addEventListener('change', async () => {
+  if (fileInput.files[0]) await processFile(fileInput.files[0]);
+});
+
+async function processFile(file) {
+  termLog(`Loading: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, '');
+  try {
+    loadedImageData = await loadImageFromFile(file);
+    updateSinglePreview(loadedImageData);
+    updateCapacityUI();
+    updateEmbedBtn();
+    updateExtractBtn();
+    termLog(`Capacity [${currentAlgo.toUpperCase()}]: ${imageCapacity[currentAlgo].toLocaleString()} chars`, 'info');
+  } catch (err) {
+    termLog('Error loading image: ' + err.message, 'err');
+  }
+}
+
+// Message input
+document.getElementById('msgInput').addEventListener('input', () => {
+  updateCapacityUI();
+  updateEmbedBtn();
+});
+
+// Embed button
+document.getElementById('embedBtn').addEventListener('click', runEmbed);
+
+// Extract button
+document.getElementById('extractBtn').addEventListener('click', runExtract);
+
+// Copy button
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const text = document.getElementById('extractedOut').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    termLog('Message copied to clipboard.', 'info');
+  });
+});
+
+// Download button
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  if (!window._stegoImageData) return;
+  const cv = document.createElement('canvas');
+  renderImageDataToCanvas(cv, window._stegoImageData);
+  cv.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `stego_${currentAlgo}_${Date.now()}.png`;
+    a.click();
+    termLog('Stego image downloaded as PNG.', 'info');
+  }, 'image/png');
+});
+
+termLog('All modules loaded. Ready.', 'info');
+</script>
+</body>
+</html>
