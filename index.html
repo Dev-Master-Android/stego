@@ -617,7 +617,7 @@
     <div class="panel" id="uploadPanel">
       <span class="panel-label">INPUT IMAGE</span>
       <div class="upload-zone" id="uploadZone">
-        <input type="file" id="fileInput" accept="image/bmp,image/png,image/jpeg,image/jpg">
+        <input type="file" id="fileInput" accept=".bmp,.png,.jpg,.jpeg,image/bmp,image/x-bmp,image/x-ms-bmp,image/png,image/jpeg">
         <div class="upload-icon">⬡</div>
         <div class="upload-text">
           <strong>DROP IMAGE / CLICK TO BROWSE</strong>
@@ -818,50 +818,106 @@ function readInt32(bits, offset) {
 }
 
 // =====================================================================
-// BMP PARSER
+// BMP PARSER — supports 24-bit and 32-bit uncompressed BMP
 // =====================================================================
 /**
  * Parse a BMP ArrayBuffer and return ImageData.
- * Supports 24-bit uncompressed BMP (DIB header BMP).
+ * Supports: 24-bit BGR, 32-bit BGRA/BGRx, top-down and bottom-up.
+ * Throws descriptive error so caller can fall back to native loading.
  */
 function parseBMP(buffer) {
   const view = new DataView(buffer);
-  // BMP signature
+
+  // --- Signature check ---
   if (view.getUint8(0) !== 0x42 || view.getUint8(1) !== 0x4D) {
-    throw new Error('Not a valid BMP file');
+    throw new Error('Not a valid BMP file (bad signature)');
   }
-  const pixelOffset = view.getUint32(10, true);
-  const dibSize = view.getUint32(14, true);
-  const width = view.getInt32(18, true);
-  let height = view.getInt32(22, true);
+
+  const pixelOffset  = view.getUint32(10, true); // offset to pixel data
+  const dibSize      = view.getUint32(14, true); // DIB header size
+  const width        = view.getInt32(18, true);
+  const heightRaw    = view.getInt32(22, true);
   const bitsPerPixel = view.getUint16(28, true);
-  const compression = view.getUint32(30, true);
+  const compression  = view.getUint32(30, true);
 
-  if (bitsPerPixel !== 24) throw new Error('Only 24-bit BMP supported');
-  if (compression !== 0) throw new Error('Compressed BMP not supported');
+  // BI_RGB = 0 (no compression), BI_BITFIELDS = 3 (allowed for 32-bit)
+  if (compression !== 0 && compression !== 3) {
+    throw new Error(`BMP compression type ${compression} not supported (only uncompressed)`);
+  }
+  if (bitsPerPixel !== 24 && bitsPerPixel !== 32) {
+    throw new Error(`BMP bit depth ${bitsPerPixel} not supported — use 24-bit or 32-bit BMP`);
+  }
+  if (width <= 0) {
+    throw new Error('BMP has invalid width');
+  }
 
-  const topDown = height < 0;
-  const absHeight = Math.abs(height);
-  // Row stride must be padded to 4-byte boundary
-  const rowBytes = width * 3;
-  const stride = Math.ceil(rowBytes / 4) * 4;
+  const topDown  = heightRaw < 0;          // negative height = top-down
+  const absHeight = Math.abs(heightRaw);
+
+  // Bytes per pixel in file
+  const bytesPerPixel = bitsPerPixel === 32 ? 4 : 3;
+
+  // Row stride padded to 4-byte boundary
+  const rowBytes = width * bytesPerPixel;
+  const stride   = Math.ceil(rowBytes / 4) * 4;
 
   const imageData = new ImageData(width, absHeight);
   const data = imageData.data;
 
   for (let row = 0; row < absHeight; row++) {
+    // BMP stores rows bottom-up by default; top-down if height was negative
     const srcRow = topDown ? row : (absHeight - 1 - row);
     const rowOffset = pixelOffset + srcRow * stride;
+
     for (let col = 0; col < width; col++) {
-      const srcIdx = rowOffset + col * 3;
+      const srcIdx = rowOffset + col * bytesPerPixel;
       const dstIdx = (row * width + col) * 4;
-      data[dstIdx]   = view.getUint8(srcIdx + 2); // R (BMP stores BGR)
-      data[dstIdx+1] = view.getUint8(srcIdx + 1); // G
-      data[dstIdx+2] = view.getUint8(srcIdx);     // B
-      data[dstIdx+3] = 255;
+
+      if (bitsPerPixel === 24) {
+        // BGR → RGB
+        data[dstIdx]     = view.getUint8(srcIdx + 2); // R
+        data[dstIdx + 1] = view.getUint8(srcIdx + 1); // G
+        data[dstIdx + 2] = view.getUint8(srcIdx);     // B
+        data[dstIdx + 3] = 255;                        // A
+      } else {
+        // 32-bit BGRA or BGRx → RGBA
+        data[dstIdx]     = view.getUint8(srcIdx + 2); // R
+        data[dstIdx + 1] = view.getUint8(srcIdx + 1); // G
+        data[dstIdx + 2] = view.getUint8(srcIdx);     // B
+        // Use alpha if present, otherwise opaque
+        const alpha = view.getUint8(srcIdx + 3);
+        data[dstIdx + 3] = alpha > 0 ? alpha : 255;
+      }
     }
   }
+
   return imageData;
+}
+
+/**
+ * Load BMP via native browser Image element as fallback.
+ * Works for any BMP variant the browser supports (16-bit, paletted, etc.)
+ */
+function parseBMPNative(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      cv.width  = img.naturalWidth;
+      cv.height = img.naturalHeight;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      resolve(imgData);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Browser could not decode this BMP variant'));
+    };
+    img.src = url;
+  });
 }
 
 // =====================================================================
@@ -1178,41 +1234,61 @@ function wowExtract(imgData) {
 // IMAGE LOADING
 // =====================================================================
 async function loadImageFromFile(file) {
-  const isBmp = file.name.toLowerCase().endsWith('.bmp');
-  isJpeg = file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg');
+  const name = file.name.toLowerCase();
+  const isBmp  = name.endsWith('.bmp')
+              || file.type === 'image/bmp'
+              || file.type === 'image/x-bmp'
+              || file.type === 'image/x-ms-bmp';
+  isJpeg = name.endsWith('.jpg') || name.endsWith('.jpeg');
 
   document.getElementById('jpegWarn').style.display = isJpeg ? 'inline-block' : 'none';
 
   if (isBmp) {
+    // Strategy: try manual ArrayBuffer parser first (exact pixel fidelity),
+    // fall back to native browser decoding if parser rejects the variant.
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
+          // --- Attempt 1: manual parser (24-bit / 32-bit) ---
           const imgData = parseBMP(e.target.result);
+          termLog(`BMP parsed manually: ${imgData.width}×${imgData.height}px`, 'info');
           resolve(imgData);
-          termLog(`BMP parsed: ${imgData.width}×${imgData.height}px`, 'info');
-        } catch (err) {
-          reject(err);
+        } catch (parseErr) {
+          termLog(`Manual BMP parser: ${parseErr.message} — trying native fallback...`, 'warn');
+          try {
+            // --- Attempt 2: native browser Image decode ---
+            const imgData = await parseBMPNative(file);
+            termLog(`BMP loaded via browser: ${imgData.width}×${imgData.height}px`, 'info');
+            resolve(imgData);
+          } catch (nativeErr) {
+            reject(new Error(`Cannot load BMP: ${nativeErr.message}`));
+          }
         }
       };
+      reader.onerror = () => reject(new Error('FileReader failed to read file'));
       reader.readAsArrayBuffer(file);
     });
   } else {
+    // PNG / JPEG — load via native Image element + canvas
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
         const cv = document.createElement('canvas');
-        cv.width = img.naturalWidth;
+        cv.width  = img.naturalWidth;
         cv.height = img.naturalHeight;
         const ctx = cv.getContext('2d');
         ctx.drawImage(img, 0, 0);
         const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
         URL.revokeObjectURL(url);
         resolve(imgData);
-        termLog(`${isJpeg?'JPEG':'PNG'} loaded: ${imgData.width}×${imgData.height}px`, isJpeg ? 'warn' : 'info');
+        termLog(`${isJpeg ? 'JPEG' : 'PNG'} loaded: ${imgData.width}×${imgData.height}px`, isJpeg ? 'warn' : 'info');
       };
-      img.onerror = () => reject(new Error('Failed to load image'));
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image'));
+      };
       img.src = url;
     });
   }
