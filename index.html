@@ -684,7 +684,7 @@
         </div>
       </div>
       <button class="btn-primary" id="downloadBtn" style="margin-top:14px">
-        <span>⬇ DOWNLOAD STEGO IMAGE (PNG)</span>
+        <span>⬇ DOWNLOAD STEGO IMAGE (BMP)</span>
       </button>
     </div>
   </div>
@@ -1557,18 +1557,87 @@ document.getElementById('copyBtn').addEventListener('click', () => {
   });
 });
 
-// Download button
+// =====================================================================
+// BMP ENCODER — ImageData → 24-bit uncompressed BMP ArrayBuffer
+// =====================================================================
+/**
+ * Encodes ImageData into a 24-bit uncompressed BMP file (ArrayBuffer).
+ * Format: BITMAPFILEHEADER (14 bytes) + BITMAPINFOHEADER (40 bytes) + pixel data.
+ * Pixels stored bottom-up, BGR order, rows padded to 4-byte boundary.
+ */
+function imageDataToBMP(imgData) {
+  const W = imgData.width;
+  const H = imgData.height;
+  const src = imgData.data;
+
+  // Row stride padded to 4-byte boundary (24-bit = 3 bytes/pixel)
+  const rowBytes = W * 3;
+  const stride   = Math.ceil(rowBytes / 4) * 4;
+  const padding  = stride - rowBytes;
+
+  const pixelDataSize = stride * H;
+  const fileSize      = 14 + 40 + pixelDataSize; // file header + DIB header + pixels
+
+  const buf  = new ArrayBuffer(fileSize);
+  const view = new DataView(buf);
+  let offset = 0;
+
+  // --- BITMAPFILEHEADER (14 bytes) ---
+  view.setUint8(0,  0x42); // 'B'
+  view.setUint8(1,  0x4D); // 'M'
+  view.setUint32(2,  fileSize,    true); // bfSize
+  view.setUint16(6,  0,           true); // bfReserved1
+  view.setUint16(8,  0,           true); // bfReserved2
+  view.setUint32(10, 14 + 40,     true); // bfOffBits — pixel data starts after headers
+  offset = 14;
+
+  // --- BITMAPINFOHEADER (40 bytes) ---
+  view.setUint32(offset,      40,          true); // biSize
+  view.setInt32 (offset +  4, W,           true); // biWidth
+  view.setInt32 (offset +  8, H,           true); // biHeight (positive = bottom-up)
+  view.setUint16(offset + 12, 1,           true); // biPlanes
+  view.setUint16(offset + 14, 24,          true); // biBitCount (24-bit)
+  view.setUint32(offset + 16, 0,           true); // biCompression (BI_RGB = 0)
+  view.setUint32(offset + 20, pixelDataSize, true); // biSizeImage
+  view.setInt32 (offset + 24, 2835,        true); // biXPelsPerMeter (~72 dpi)
+  view.setInt32 (offset + 28, 2835,        true); // biYPelsPerMeter
+  view.setUint32(offset + 32, 0,           true); // biClrUsed
+  view.setUint32(offset + 36, 0,           true); // biClrImportant
+  offset += 40;
+
+  // --- Pixel data (bottom-up, BGR, padded rows) ---
+  const bytes = new Uint8Array(buf);
+  for (let row = 0; row < H; row++) {
+    // BMP stores rows bottom-up → flip vertically
+    const srcRow = H - 1 - row;
+    const dstRowOffset = offset + row * stride;
+    for (let col = 0; col < W; col++) {
+      const srcIdx = (srcRow * W + col) * 4; // RGBA source
+      const dstIdx = dstRowOffset + col * 3;
+      bytes[dstIdx]     = src[srcIdx + 2]; // B
+      bytes[dstIdx + 1] = src[srcIdx + 1]; // G
+      bytes[dstIdx + 2] = src[srcIdx];     // R
+    }
+    // Padding bytes are already 0 (ArrayBuffer initialized to zero)
+  }
+
+  return buf;
+}
+
+// Download button — saves exclusively as 24-bit BMP
 document.getElementById('downloadBtn').addEventListener('click', () => {
   if (!window._stegoImageData) return;
-  const cv = document.createElement('canvas');
-  renderImageDataToCanvas(cv, window._stegoImageData);
-  cv.toBlob(blob => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `stego_${currentAlgo}_${Date.now()}.png`;
-    a.click();
-    termLog('Stego image downloaded as PNG.', 'info');
-  }, 'image/png');
+
+  const bmpBuffer = imageDataToBMP(window._stegoImageData);
+  const blob = new Blob([bmpBuffer], { type: 'image/bmp' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `stego_${currentAlgo}_${Date.now()}.bmp`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  const kb = (bmpBuffer.byteLength / 1024).toFixed(1);
+  termLog(`Stego image saved as BMP (${kb} KB) — lossless, pixel-perfect.`, 'info');
 });
 
 termLog('All modules loaded. Ready.', 'info');
